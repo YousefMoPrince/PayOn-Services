@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>PayOn WebSocket Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; direction: rtl; padding: 20px; background: #f4f6f9; }
+        #messages { border: 2px solid #ddd; background: #fff; padding: 15px; height: 350px; overflow-y: auto; border-radius: 8px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .notif { background: #e3f2fd; padding: 10px; border-left: 5px solid #2196f3; margin: 10px 0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<h2>لوحة فحص إشعارات PayOn Live 🚀</h2>
+<div id="status">جاري الاتصال...</div>
+<br>
+<div id="messages"></div>
+
+<script>
+    // 1️⃣ حط هنا الـ JWT Token الصالح لليوزر اللي بتجرب بيه (خده من ريكويست الـ Login)
+    const token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ5b3VzZWYiLCJ1c2VybmFtZSI6InlvdXNlZiBtb2hhbW1lZCIsImlhdCI6MTc4MjM0MDc3NSwiZXhwIjoxNzgyMzQxNjc1fQ.Giqg6cm9-BmTML438JO_wGHUbSAdkCF9g8Iajaze6dg";
+
+    // 2️⃣ الـ URL بتاع الـ WebSocket الـ endpoint في الباكيند
+    const socket = new SockJS('http://localhost:9090/ws/notifications');
+    const stompClient = Stomp.over(socket);
+
+    // تمرير التوكن في الـ Connect Headers لتخطي الـ Security Interceptor
+    const headers = {
+        'Authorization': 'Bearer ' + token
+    };
+
+    stompClient.connect(headers, function (frame) {
+        document.getElementById('status').innerHTML = "<span class='success'>✅ متصل بالـ WebSocket بنجاح!</span>";
+        logMessage("نظام الاستماع للإشعارات نشط الآن...");
+
+        // 3️⃣ الاشتراك في الـ Private Queue الخاص باليوزر
+        stompClient.subscribe('/user/queue/notifications', function (notification) {
+            const data = JSON.parse(notification.body);
+
+            // طباعة الإشعار في الـ Console وعلى الشاشة
+            console.log("Notification Received: ", data);
+            displayNotification(data);
+        });
+
+    }, function (error) {
+        document.getElementById('status').innerHTML = "<span class='error'>❌ فشل الاتصال: " + error + "</span>";
+    });
+
+    function logMessage(msg) {
+        const div = document.getElementById('messages');
+        div.innerHTML += `<p style='color: #666;'>ℹ️ ${msg}</p>`;
+    }
+
+    function displayNotification(data) {
+        const div = document.getElementById('messages');
+        const notifHtml = `
+                <div class="notif">
+                    <strong>🔔 [${data.eventType}] ${data.title}</strong><br>
+                    <span>${data.message}</span><br>
+                    <small style="color: #999;">${data.timestamp}</small>
+                </div>
+            `;
+        div.innerHTML += notifHtml;
+        div.scrollTop = div.scrollHeight; // سكرول تلقائي لأسفل
+    }
+</script>
+</body>
+</html>
