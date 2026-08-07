@@ -28,5 +28,8 @@ public class Wallet {
     private BigDecimal balance;
     @Column(name = "account_number",nullable = false,length = 50)
     private Long accountNumber;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "wallet_status",nullable = false,updatable = false)
+    private WalletStatus walletStatus;
 
 }

@@ -1,5 +1,6 @@
 package com.jo.payonservices.transactions.model;
 
+import com.jo.payonservices.merchant.model.MerchantType;
 import com.jo.payonservices.wallet.model.Wallet;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -37,6 +38,9 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     @Column(name = "status",nullable = false)
     private Status status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "merchant_type")
+    private MerchantType merchantType;
     @Column(name = "idempotency_key",nullable = false,length = 100)
     private String idempotencyKey;
     @CreationTimestamp

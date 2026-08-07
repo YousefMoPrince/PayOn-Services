@@ -1,5 +1,6 @@
 package com.jo.payonservices.onpay.repository;
 
+import com.jo.payonservices.merchant.model.MerchantType;
 import com.jo.payonservices.onpay.model.OnPay;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,5 +22,6 @@ Optional<OnPay> findByTransactionCode(Long transactionCode);
 Optional<OnPay> findByReferenceKey(String referenceKey);
 @Query("SELECT o FROM OnPay o WHERE o.accountNumber = :accountNumber OR o.payerAccountNumber = :accountNumber")
 List<OnPay> findAllUserTransactions(@Param("accountNumber") Long accountNumber);
+List<OnPay> findAllUserTransactionsByAccountNumberAndMerchantType(Long accountNumber, MerchantType merchantType);
 Optional<OnPay> findByIdempotencyKey(UUID idempotencyKey);
 }

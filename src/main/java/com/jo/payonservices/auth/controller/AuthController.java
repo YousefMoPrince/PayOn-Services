@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/auth")
+
 public class AuthController {
 
 @Autowired
@@ -48,7 +49,7 @@ private AuthService authService;
 
     @PostMapping("/upload-thumbnail")
     public ResponseEntity<Map<String, Object>> uploadThumbnail(
-            @RequestParam("file") MultipartFile file,
+            @RequestPart("file") MultipartFile file,
             Authentication authentication) {
 
         if (authentication == null || !authentication.isAuthenticated()) {

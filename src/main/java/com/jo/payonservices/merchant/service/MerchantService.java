@@ -5,6 +5,7 @@ import com.jo.payonservices.auth.repository.UserRepo;
 import com.jo.payonservices.merchant.dto.BecomeMerchantRequest;
 import com.jo.payonservices.merchant.dto.MerchantResponse;
 import com.jo.payonservices.merchant.model.Merchant;
+import com.jo.payonservices.merchant.model.MerchantType;
 import com.jo.payonservices.merchant.repository.MerchantRepo;
 import com.jo.payonservices.notifications.service.NotificationService;
 import com.jo.payonservices.wallet.model.Wallet;
@@ -38,7 +39,7 @@ public class MerchantService {
         String username = (String) auth.getPrincipal();
         users user = userRepo.findByUserName(username).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        Wallet wallet = walletRepo.findByUser_UserId(user.getUserId()).orElseThrow(()->
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName()).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
         if (merchantRepo.findByAccountNumber(wallet.getAccountNumber()).isPresent()) {
             log.error("Registration failed: Account number {} is already registered as a merchant", wallet.getAccountNumber());
@@ -50,8 +51,9 @@ public class MerchantService {
          }
          Merchant merchant = new Merchant();
          merchant.setMerchantUserName(request.getMerchantUserName());
-         merchant.setMerchantUrl(request.getMerchantUrl());
+         merchant.setUser(user);
          merchant.setAccountNumber(wallet.getAccountNumber());
+         merchant.setMerchantType(MerchantType.INDIVIDUAL);
          merchantRepo.save(merchant);
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -68,17 +70,18 @@ public class MerchantService {
         } else {
             notificationService.sendNotification(user.getUserName(), "Success", "Merchant", "Welcome to Merchant Dashboard!");
         }
-        return new MerchantResponse(merchant.getMerchantId(),merchant.getMerchantUserName(),merchant.getMerchantUrl(),merchant.getAccountNumber());
+        return new MerchantResponse(merchant.getMerchantId(),merchant.getMerchantUserName(),merchant.getMerchantUrl(),merchant.getAccountNumber(),merchant.getMerchantType());
     }
+
     @Transactional(readOnly = true)
     public MerchantResponse getMerchant(Authentication auth) {
         String username = (String) auth.getPrincipal();
         users user = userRepo.findByUserName(username).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        Wallet wallet = walletRepo.findByUser_UserId(user.getUserId()).orElseThrow(()->
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName()).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
         Merchant merchant = merchantRepo.findByAccountNumber(wallet.getAccountNumber()).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
-        return new MerchantResponse(merchant.getMerchantId(),merchant.getMerchantUserName(),merchant.getMerchantUrl(),wallet.getAccountNumber());
+        return new MerchantResponse(merchant.getMerchantId(),merchant.getMerchantUserName(),null,wallet.getAccountNumber(),merchant.getMerchantType());
     }
 }

@@ -1,5 +1,6 @@
 package com.jo.payonservices.onpay.event;
 
+import com.jo.payonservices.onpay.model.ThirdPartyStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -10,9 +11,11 @@ import java.util.UUID;
 @AllArgsConstructor
 public class PaymentSuccessWebhookEvent {
     private UUID transactionId;
+    private ThirdPartyStatus status;
     private String merchantUrl;
+    private Long merchantAccountNumber;
     private Long payerAccountNumber;
-    private String referenceKey;
     private BigDecimal amount;
     private String currency;
+    private UUID idempotencyKey;
 }

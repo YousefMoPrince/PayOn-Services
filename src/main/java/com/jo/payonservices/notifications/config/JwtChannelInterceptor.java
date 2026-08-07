@@ -36,6 +36,7 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
                     String userName = claims.getSubject();
 
                     if (userName != null) {
+                        userName = userName.trim();
                         UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                                 userName,
                                 null,

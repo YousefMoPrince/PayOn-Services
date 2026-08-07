@@ -25,7 +25,7 @@
     const token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ5b3VzZWYiLCJ1c2VybmFtZSI6InlvdXNlZiBtb2hhbW1lZCIsImlhdCI6MTc4MjM0MDc3NSwiZXhwIjoxNzgyMzQxNjc1fQ.Giqg6cm9-BmTML438JO_wGHUbSAdkCF9g8Iajaze6dg";
 
     // 2️⃣ الـ URL بتاع الـ WebSocket الـ endpoint في الباكيند
-    const socket = new SockJS('http://localhost:9090/ws/notifications');
+    const socket = new SockJS('https://localhost/ws/notifications');
     const stompClient = Stomp.over(socket);
 
     // تمرير التوكن في الـ Connect Headers لتخطي الـ Security Interceptor

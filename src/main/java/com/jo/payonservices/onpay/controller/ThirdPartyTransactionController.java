@@ -19,12 +19,17 @@ import java.util.List;
 public class ThirdPartyTransactionController {
 
     private final ThirdPartyTransactionService thirdPartyTransactionService;
-
-    @PostMapping("/receipts/webhook")
+    @GetMapping("/verify/{accountNumber}")
+    public ResponseEntity<Boolean> verify(@PathVariable Long accountNumber, @RequestParam(name = "email") String email) {
+        Boolean isValid = thirdPartyTransactionService.isValidAccountNumber(accountNumber, email);
+        return ResponseEntity.ok(isValid);
+    }
+    @PostMapping("/receipts/create")
     public ResponseEntity<ThirdPartyTransactionApiResponse<ThirdPartyTransactionResponse>> createReceipt(
-            @RequestBody ThirdPartyTransactionRequest request) {
+            @RequestBody ThirdPartyTransactionRequest request
+            ,Authentication auth) {
 
-        ThirdPartyTransactionResponse response = thirdPartyTransactionService.newReceipt(request);
+        ThirdPartyTransactionResponse response = thirdPartyTransactionService.newReceipt(auth,request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ThirdPartyTransactionApiResponse<>("Receipt created successfully", response));
     }

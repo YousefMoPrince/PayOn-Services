@@ -1,5 +1,6 @@
 package com.jo.payonservices.merchant.dto;
 
+import com.jo.payonservices.merchant.model.MerchantType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,4 +17,5 @@ public class MerchantResponse {
     private String merchantUserName;
     private String merchantUrl;
     private Long accountNumber;
+    private MerchantType merchantType;
 }

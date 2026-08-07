@@ -2,10 +2,12 @@ package com.jo.payonservices.transactions.service;
 
 import com.jo.payonservices.auth.model.users;
 import com.jo.payonservices.auth.repository.UserRepo;
+import com.jo.payonservices.merchant.model.EnterpriseMerchantStatus;
+import com.jo.payonservices.merchant.model.Merchant;
+import com.jo.payonservices.merchant.model.MerchantType;
+import com.jo.payonservices.merchant.repository.MerchantRepo;
 import com.jo.payonservices.notifications.service.NotificationService;
-import com.jo.payonservices.transactions.dto.TransactionApiResponse;
-import com.jo.payonservices.transactions.dto.TransactionRequest;
-import com.jo.payonservices.transactions.dto.TransactionResponse;
+import com.jo.payonservices.transactions.dto.*;
 import com.jo.payonservices.transactions.model.Status;
 import com.jo.payonservices.transactions.model.Transaction;
 import com.jo.payonservices.transactions.model.TransactionType;
@@ -16,7 +18,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -26,6 +33,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -43,6 +51,8 @@ public class TransactionService {
     private TransactionTemplate transactionTemplate;
     @Autowired
     private NotificationService notificationService;
+    @Autowired
+    private MerchantRepo merchantRepo;
 
     private static final String REDIS_TX_PREFIX = "tx:idempotency:";
     private static final String REDIS_ACK_PREFIX = "tx:ack:idempotency:";
@@ -124,6 +134,7 @@ public class TransactionService {
         } catch (Exception e) {
             stringRedisTemplate.opsForValue().set(key, "FAILED", Duration.ofHours(24));
             if (walletHolder[0] != null) {
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                 transactionTemplate.execute(status -> transactionRepo.save(Transaction.builder()
                         .walletId(walletHolder[0])
                         .amount(request.getAmount())
@@ -234,6 +245,7 @@ public class TransactionService {
         } catch (Exception e) {
             stringRedisTemplate.opsForValue().set(key, "FAILED", Duration.ofHours(24));
             if (walletHolder[0] != null) {
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                 transactionTemplate.execute(status -> transactionRepo.save(Transaction.builder()
                         .walletId(walletHolder[0])
                         .amount(request.getAmount())
@@ -336,6 +348,7 @@ public class TransactionService {
         } catch (Exception e) {
             stringRedisTemplate.opsForValue().set(key, "FAILED", Duration.ofHours(24));
             if (walletHolder[0] != null) {
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                 transactionTemplate.execute(status -> transactionRepo.save(Transaction.builder()
                         .walletId(walletHolder[0])
                         .receiverWalletId(walletHolder[1])
@@ -441,13 +454,128 @@ public class TransactionService {
         }
     }
 
+    @Transactional(isolation = Isolation.REPEATABLE_READ, rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
+    public EnterpriseTransactionResponse enterpriseTransfer(Authentication auth, EnterpriseTransactionRequest request) {
+        String userName = auth.getName();
+        Merchant merchant = merchantRepo.findByUser_UserName(userName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid amount");
+        }
+
+        if (merchant.getAccountNumber().equals(request.getReceiverAccountNumber())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot transfer to yourself");
+        }
+        String key = REDIS_TX_PREFIX + request.getIdempotencyKey();
+        Boolean isAbsent = stringRedisTemplate.opsForValue().setIfAbsent(key, "Processing", Duration.ofHours(24));
+
+        if (Boolean.FALSE.equals(isAbsent)) {
+            String currentStatus = stringRedisTemplate.opsForValue().get(key);
+            if ("Processing".equals(currentStatus)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Transaction is currently being processed. Please wait.");
+            }
+            if ("SUCCESS".equals(currentStatus)) {
+                return transactionRepo.findByIdempotencyKey(request.getIdempotencyKey())
+                        .map(tx -> EnterpriseTransactionResponse.builder()
+                                .transactionId(tx.getTransactionid())
+                                .amount(tx.getAmount())
+                                .idempotencyKey(tx.getIdempotencyKey())
+                                .receiverAccountNumber(request.getReceiverAccountNumber())
+                                .status(tx.getStatus().name())
+                                .type(tx.getTransactionType().name())
+                                .timestamp(tx.getCreatedAt() != null ? tx.getCreatedAt() : LocalDateTime.now())
+                                .build())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Transaction is already being processed."));
+            }
+            if ("FAILED".equals(currentStatus)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "This idempotency key belongs to a previously failed transaction.");
+            }
+        }
+        final Wallet[] walletHolder = new Wallet[2];
+        try {
+
+                walletHolder[0] = walletRepo.findByUserIdForUpdate(merchant.getUser().getUserId()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sender wallet not found"));
+                walletHolder[1] = walletRepo.findByAccountNumber(request.getReceiverAccountNumber()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Receiver wallet not found"));
+
+            if (walletHolder[0].getBalance().compareTo(request.getAmount()) < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance");
+            }
+            walletHolder[0].setBalance(walletHolder[0].getBalance().subtract(request.getAmount()));
+            walletHolder[1].setBalance(walletHolder[1].getBalance().add(request.getAmount()));
+            walletRepo.save(walletHolder[0]);
+            walletRepo.save(walletHolder[1]);
+            Transaction transaction = Transaction
+                    .builder()
+                    .walletId(walletHolder[0])
+                    .receiverWalletId(walletHolder[1])
+                    .amount(request.getAmount())
+                    .idempotencyKey(request.getIdempotencyKey())
+                    .status(Status.SUCCESS)
+                    .transactionType(TransactionType.ENTERPRISE_TRANSFER)
+                    .createdAt(LocalDateTime.now())
+                    .merchantType(MerchantType.ENTERPRISE)
+                    .build();
+            transactionRepo.save(transaction);
+            stringRedisTemplate.opsForValue().set(key, "SUCCESS", Duration.ofHours(24));
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        notificationService.sendNotification(
+                                walletHolder[1].getUser().getUserName(),
+                                "Success",
+                                "Successful Transfer",
+                                "You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() +"."
+                        );
+                    }
+                });
+            } else {
+                notificationService.sendNotification(walletHolder[1].getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() +".");
+            }
+            return EnterpriseTransactionResponse
+                    .builder()
+                    .transactionId(transaction.getTransactionid())
+                    .type(transaction.getTransactionType().name())
+                    .timestamp(transaction.getCreatedAt() != null ? transaction.getCreatedAt() : LocalDateTime.now())
+                    .status(transaction.getStatus().name())
+                    .receiverAccountNumber(transaction.getReceiverWalletId().getAccountNumber())
+                    .amount(request.getAmount())
+                    .idempotencyKey(request.getIdempotencyKey())
+                    .build();
+        } catch (Exception e) {
+        stringRedisTemplate.opsForValue().set(key, "FAILED", Duration.ofHours(24));
+
+        if (walletHolder[0] != null) {
+            UUID senderId = walletHolder[0].getWalletId();
+            UUID receiverId = (walletHolder[1] != null) ? walletHolder[1].getWalletId() : null;
+
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            transactionTemplate.execute(status -> {
+                Wallet senderRef = walletRepo.findByWalletId(senderId).orElse(null);
+                Wallet receiverRef = (receiverId != null) ? walletRepo.findByWalletId(receiverId).orElse(null) : null;
+
+                return transactionRepo.save(Transaction.builder()
+                        .walletId(senderRef)
+                        .receiverWalletId(receiverRef)
+                        .amount(request.getAmount())
+                        .transactionType(TransactionType.ENTERPRISE_TRANSFER)
+                        .status(Status.FAILED)
+                        .idempotencyKey(request.getIdempotencyKey())
+                        .createdAt(LocalDateTime.now())
+                        .merchantType(MerchantType.ENTERPRISE)
+                        .build());
+            });
+        }
+        throw e;
+    }
+    }
 
     public TransactionApiResponse<List<TransactionResponse>> getTransactions(Authentication authentication) {
         String username = authentication.getName();
         users user = userRepo.findByUserName(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        Wallet wallet = walletRepo.findByUser_UserId(user.getUserId())
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
 
         List<Transaction> transactions = transactionRepo.findByWalletId(wallet);
@@ -468,5 +596,35 @@ public class TransactionService {
         }).collect(Collectors.toList());
 
         return new TransactionApiResponse<>("ALL Transactions Retrieved", transactionResponses);
+    }
+    public List<TransactionResponse> getEnterpriseTransactions(Authentication auth) {
+        String userName = auth.getName();
+        users user = userRepo.findByUserName(userName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Merchant merchant = merchantRepo.findByUser_UserName(user.getUserName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
+
+        List<Transaction> transactions = transactionRepo.findByWalletIdAndTransactionType(wallet,TransactionType.ENTERPRISE_TRANSFER);
+        if (merchant.getEnterpriseMerchantStatus().equals(EnterpriseMerchantStatus.ACTIVE)){
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Enterprise merchant is not active");
+        }
+        List<TransactionResponse> transactionResponses = transactions.stream().map(tx -> {
+            String receiverName = (tx.getReceiverWalletId() != null && tx.getReceiverWalletId().getUser() != null)
+                    ? tx.getReceiverWalletId().getUser().getUserName() : null;
+
+            return TransactionResponse.builder()
+                    .transactionId(tx.getTransactionid())
+                    .amount(tx.getAmount())
+                    .idempotencyKey(tx.getIdempotencyKey())
+                    .receiverUsername(receiverName)
+                    .status(tx.getStatus().name())
+                    .type(tx.getTransactionType().name())
+                    .timestamp(tx.getCreatedAt() != null ? tx.getCreatedAt() : LocalDateTime.now())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return transactionResponses;
     }
 }

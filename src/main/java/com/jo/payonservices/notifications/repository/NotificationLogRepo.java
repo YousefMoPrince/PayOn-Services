@@ -6,9 +6,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface NotificationLogRepo extends MongoRepository<NotificationLog, String> {
-    List<NotificationLog> findByUsername(String username);
     Page<NotificationLog> findByUsernameOrderByTimestampDesc(String username, Pageable pageable);
+    Optional<Long> countByUsernameAndIsReadFalse(String username);
+    Optional<List<NotificationLog>> findByUsernameAndIsReadFalse(String username);
 }

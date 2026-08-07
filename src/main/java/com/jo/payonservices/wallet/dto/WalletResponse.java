@@ -1,5 +1,6 @@
 package com.jo.payonservices.wallet.dto;
 
+import com.jo.payonservices.wallet.model.WalletStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,4 +18,5 @@ public class WalletResponse {
     private String userId;
     private BigDecimal balance;
     private Long accountNumber;
+    private WalletStatus walletStatus;
 }

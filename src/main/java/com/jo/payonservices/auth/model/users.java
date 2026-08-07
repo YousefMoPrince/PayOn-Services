@@ -33,6 +33,9 @@ public class users {
     private String phoneNumber;
     @Column(name = "thumbnail_path")
     private String thumbnailPath;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "user_role",nullable = false,updatable = false)
+    private Role role;
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     @Column(name = "updated_at")
