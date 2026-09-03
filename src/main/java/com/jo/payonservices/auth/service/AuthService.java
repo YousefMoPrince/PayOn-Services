@@ -2,11 +2,11 @@ package com.jo.payonservices.auth.service;
 
 import com.jo.payonservices.auth.dto.*;
 import com.jo.payonservices.auth.model.Role;
+import com.jo.payonservices.auth.model.UserStatus;
 import com.jo.payonservices.auth.model.users;
 import com.jo.payonservices.auth.repository.UserRepo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.logging.Log;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -57,6 +57,7 @@ public class AuthService {
         user.setPhoneNumber(request.getPhonenumber());
         user.setThumbnailPath(null);
         user.setRole(userRole);
+        user.setStatus(UserStatus.ONLINE);
         userRepo.save(user);
         return new  AuthResponse(user.getUserId(), user.getUserName(),user.getEmail(),user.getPhoneNumber(),user.getFullName(), user.getThumbnailPath(), user.getCreatedAt(),user.getUpdatedAt(), tokens.get("accessToken"),tokens.get("refreshToken"));
     }
@@ -68,7 +69,8 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
         }
-
+        user.setStatus(UserStatus.ONLINE);
+        userRepo.save(user);
         Map<String,String> tokens = jwtService.generateTokens(user.getFullName(), user.getUserName(),user.getRole().toString());
 
         return AuthResponse.builder()
@@ -99,10 +101,10 @@ public class AuthService {
         return jwtService.generateTokens(user.getFullName(), user.getUserName(),user.getRole().toString());
     }
 
-    public void updateUser(UpdateRequest request) {
-        String currenrUserName = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    public void updateUser(UpdateRequest request, Authentication authentication) {
+        String currentUserName = (String) authentication.getPrincipal();
 
-        users user = userRepo.findByUserName(currenrUserName)
+        users user = userRepo.findByUserName(currentUserName)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         if (request.getUsername() != null) user.setUserName(request.getUsername());
@@ -111,7 +113,7 @@ public class AuthService {
         if (request.getPhonenumber() != null) user.setPhoneNumber(request.getPhonenumber());
         if (request.getPassword() != null) user.setPassword(passwordEncoder.encode(request.getPassword()));
 
-        user.setUpdatedAt(request.getUpdatedAt() != null ? request.getUpdatedAt() : LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
         userRepo.save(user);
     }
 
@@ -154,9 +156,9 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User is not authenticated");
         }
 
-        String currenrUserName = (String) authentication.getPrincipal();
+        String currentUserName = (String) authentication.getPrincipal();
 
-        users user = userRepo.findByUserName(currenrUserName)
+        users user = userRepo.findByUserName(currentUserName)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         return AuthResponse.builder()
@@ -170,6 +172,13 @@ public class AuthService {
                 .updatedAt(user.getUpdatedAt())
                 .Token(null)
                 .build();
+    }
+    public void changeUserStatus(UserStatus status, Authentication auth) {
+        String currentUserName = (String) auth.getPrincipal();
+        users user = userRepo.findByUserName(currentUserName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        user.setStatus(status);
+        userRepo.save(user);
     }
     public void logout(LogoutRequest request) {
         String refreshToken = request.getRefreshToken();

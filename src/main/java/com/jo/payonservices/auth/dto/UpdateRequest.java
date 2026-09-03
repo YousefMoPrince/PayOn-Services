@@ -12,6 +12,4 @@ public class UpdateRequest {
     private String password;
     private String fullname;
     private String phonenumber;
-    private String thumbnailpath;
-    private LocalDateTime updatedAt;
 }

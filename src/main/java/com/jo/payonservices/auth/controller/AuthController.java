@@ -1,6 +1,7 @@
 package com.jo.payonservices.auth.controller;
 
 import com.jo.payonservices.auth.dto.*;
+import com.jo.payonservices.auth.model.UserStatus;
 import com.jo.payonservices.auth.service.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -41,11 +42,16 @@ private AuthService authService;
 
 
     @PutMapping("/update")
-    public ResponseEntity<AuthApiResponse<AuthResponse>> update(@RequestBody UpdateRequest request) {
-        authService.updateUser(request);
+    public ResponseEntity<AuthApiResponse<AuthResponse>> update(@RequestBody UpdateRequest request, Authentication authentication) {
+        authService.updateUser(request,authentication);
         return ResponseEntity.ok(new AuthApiResponse<>("User profile updated successfully",null));
     }
 
+    @PatchMapping("/change/{status}")
+    public ResponseEntity<?> changeUserStatus(@PathVariable UserStatus status, Authentication authentication) {
+        authService.changeUserStatus(status,authentication);
+        return ResponseEntity.ok().body("user status changed successfully");
+    }
 
     @PostMapping("/upload-thumbnail")
     public ResponseEntity<Map<String, Object>> uploadThumbnail(

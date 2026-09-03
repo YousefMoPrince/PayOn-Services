@@ -104,6 +104,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/upload-thumbnail",
                                 "/api/v1/auth/update",
+                                "/api/v1/auth/change/**",
                                 "/api/v1/auth/me",
                                 "/api/v1/wallet/initial",
                                 "/api/v1/wallet/walletInfo",
@@ -114,7 +115,8 @@ public class SecurityConfig {
                                 "/api/v1/merchant/becomeMerchant",
                                 "/api/v1/merchant/getMerchant",
                                 "/api/v1/onPay/receipts/{transactionCode}/pay",
-                                "/api/v1/onPay/receipts"
+                                "/api/v1/onPay/receipts",
+                                "/api/v1/notifications/**"
                         ).authenticated()
 
                         .anyRequest().authenticated()

@@ -36,6 +36,8 @@ public class users {
     @Enumerated(EnumType.STRING)
     @Column(name = "user_role",nullable = false,updatable = false)
     private Role role;
+    @Column(name = "user_status", nullable = false)
+    private UserStatus status;
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     @Column(name = "updated_at")

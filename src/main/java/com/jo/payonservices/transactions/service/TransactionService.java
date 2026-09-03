@@ -1,5 +1,6 @@
 package com.jo.payonservices.transactions.service;
 
+import com.jo.payonservices.auth.model.UserStatus;
 import com.jo.payonservices.auth.model.users;
 import com.jo.payonservices.auth.repository.UserRepo;
 import com.jo.payonservices.merchant.model.EnterpriseMerchantStatus;
@@ -426,17 +427,25 @@ public class TransactionService {
                                     "Successful Transfer",
                                     "You have successfully Transferred EGP:" + transaction.getAmount() + " to " + receiverWallet.getUser().getUserName() +"."
                             );
+                            if (receiverWallet.getUser().getStatus().equals(UserStatus.ONLINE)){
                             notificationService.sendNotification(
                                     receiverWallet.getUser().getUserName(),
                                     "Success",
                                     "Successful Transfer",
                                     "You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + senderWallet.getUser().getUserName() +"."
                             );
+                            }else {
+                                notificationService.notifyUserDevice(receiverWallet.getUser().getUserId(), String.valueOf(transaction.getTransactionid()));
+                            }
                         }
                     });
                 } else {
                     notificationService.sendNotification(senderWallet.getUser().getUserName(), "Success", "Successful Transfer", "You have successfully Transferred EGP:" + transaction.getAmount() + " to " + receiverWallet.getUser().getUserName() +".");
-                    notificationService.sendNotification(receiverWallet.getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + senderWallet.getUser().getUserName() +".");
+                    if (receiverWallet.getUser().getStatus().equals(UserStatus.ONLINE)) {
+                        notificationService.sendNotification(receiverWallet.getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + senderWallet.getUser().getUserName() + ".");
+                    }else {
+                        notificationService.notifyUserDevice(receiverWallet.getUser().getUserId(), String.valueOf(transaction.getTransactionid()));
+                    }
                 }
                 return TransactionResponse.builder()
                         .transactionId(transaction.getTransactionid())
@@ -521,16 +530,24 @@ public class TransactionService {
                 TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                     @Override
                     public void afterCommit() {
+                        if (walletHolder[1].getUser().getStatus().equals(UserStatus.ONLINE)){
                         notificationService.sendNotification(
                                 walletHolder[1].getUser().getUserName(),
                                 "Success",
                                 "Successful Transfer",
                                 "You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() +"."
                         );
+                        }else {
+                            notificationService.notifyUserDevice(walletHolder[1].getUser().getUserId(),transaction.getTransactionid().toString());
+                        }
                     }
                 });
             } else {
-                notificationService.sendNotification(walletHolder[1].getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() +".");
+                if (walletHolder[1].getUser().getStatus().equals(UserStatus.ONLINE)) {
+                    notificationService.sendNotification(walletHolder[1].getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() + ".");
+                }else {
+                    notificationService.notifyUserDevice(walletHolder[1].getUser().getUserId(),transaction.getTransactionid().toString());
+                }
             }
             return EnterpriseTransactionResponse
                     .builder()
@@ -567,7 +584,7 @@ public class TransactionService {
             });
         }
         throw e;
-    }
+        }
     }
 
     public TransactionApiResponse<List<TransactionResponse>> getTransactions(Authentication authentication) {

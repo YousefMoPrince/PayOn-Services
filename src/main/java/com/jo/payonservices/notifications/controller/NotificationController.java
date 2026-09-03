@@ -1,5 +1,6 @@
 package com.jo.payonservices.notifications.controller;
 
+import com.jo.payonservices.notifications.dto.DeviceTokenRequest;
 import com.jo.payonservices.notifications.dto.NotificationResponse;
 import com.jo.payonservices.notifications.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,16 @@ public class NotificationController {
     @PatchMapping("/read/all")
     public ResponseEntity<Void> readAllNotifications(Authentication auth) {
         notificationService.markAllAsRead(auth);
+        return ResponseEntity.ok().build();
+    }
+    @PostMapping("/device/register")
+    public ResponseEntity<?> registerDeviceToken(@RequestBody DeviceTokenRequest request, Authentication auth) {
+        notificationService.registerDeviceToken(request, auth);
+        return ResponseEntity.ok().build();
+    }
+    @DeleteMapping("/device/{deviceToken}/delete")
+    public ResponseEntity<?> deleteDeviceToken(@PathVariable String deviceToken, Authentication auth) {
+        notificationService.deleteDeviceToken(deviceToken, auth);
         return ResponseEntity.ok().build();
     }
 

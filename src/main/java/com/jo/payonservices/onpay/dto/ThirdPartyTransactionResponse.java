@@ -28,6 +28,7 @@ public class ThirdPartyTransactionResponse{
         private BigDecimal amount;
         private Long accountNumber;
         private Long payerAccountNumber;
+        private String currency;
         private Long transactionCode;
         private UUID idempotencyKey;
         private LocalDateTime createdAt;

@@ -1,5 +1,6 @@
 package com.jo.payonservices.onpay.service;
 
+import com.jo.payonservices.auth.model.UserStatus;
 import com.jo.payonservices.auth.model.users;
 import com.jo.payonservices.auth.repository.UserRepo;
 import com.jo.payonservices.merchant.model.Merchant;
@@ -252,18 +253,25 @@ public class ThirdPartyTransactionService {
                                 "Successful Payment",
                                 "You have successfully Pay EGP:" + receipt.getAmount() + " to " +receipt.getMerchantUserName() +"for receipt "+ receipt.getTransactionCode()+"."
                         );
-                        notificationService.sendNotification(
-                                merchantWallet.getUser().getUserName(),
-                                "Success",
-                                "Successful Payment",
-                                payerWallet.getUser().getUserName() +" has successfully Pay the receipt "+receipt.getTransactionCode()+" ,for amount EGP:" + receipt.getAmount() + " ."
-                        );
-
+                        if (merchantWallet.getUser().getStatus().equals(UserStatus.ONLINE)) {
+                            notificationService.sendNotification(
+                                    merchantWallet.getUser().getUserName(),
+                                    "Success",
+                                    "Successful Payment",
+                                    payerWallet.getUser().getUserName() + " has successfully Pay the receipt " + receipt.getTransactionCode() + " ,for amount EGP:" + receipt.getAmount() + " ."
+                            );
+                        }else {
+                            notificationService.notifyMerchantDevice(merchantWallet.getUser().getUserId(),receipt.getTransactionCode());
+                        }
                     }
                 });
             } else {
-                notificationService.sendNotification(payerWallet.getUser().getUserName(), "Success", "Successful Payment", "You have successfully Pay EGP:" + receipt.getAmount() + " to " +receipt.getMerchantUserName() +"for receipt "+ receipt.getTransactionCode()+".");
-                notificationService.sendNotification(merchantWallet.getUser().getUserName(), "Success", "Successful Payment", payerWallet.getUser().getUserName() +" has successfully Pay the receipt "+receipt.getTransactionCode()+" ,for amount EGP:" + receipt.getAmount() + " .");
+                notificationService.sendNotification(payerWallet.getUser().getUserName(), "Success", "Successful Payment", "You have successfully Pay EGP:" + receipt.getAmount() + " to " + receipt.getMerchantUserName() + "for receipt " + receipt.getTransactionCode() + ".");
+                if (merchantWallet.getUser().getStatus().equals(UserStatus.ONLINE)) {
+                    notificationService.sendNotification(merchantWallet.getUser().getUserName(), "Success", "Successful Payment", payerWallet.getUser().getUserName() + " has successfully Pay the receipt " + receipt.getTransactionCode() + " ,for amount EGP:" + receipt.getAmount() + " .");
+                }else {
+                    notificationService.notifyMerchantDevice(merchantWallet.getUser().getUserId(),receipt.getTransactionCode());
+                }
             }
         }else {
             PaymentSuccessWebhookEvent webhookEvent = new PaymentSuccessWebhookEvent(
