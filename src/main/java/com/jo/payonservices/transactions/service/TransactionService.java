@@ -7,6 +7,8 @@ import com.jo.payonservices.merchant.model.EnterpriseMerchantStatus;
 import com.jo.payonservices.merchant.model.Merchant;
 import com.jo.payonservices.merchant.model.MerchantType;
 import com.jo.payonservices.merchant.repository.MerchantRepo;
+import com.jo.payonservices.notifications.model.NotificationLog;
+import com.jo.payonservices.notifications.repository.NotificationLogRepo;
 import com.jo.payonservices.notifications.service.NotificationService;
 import com.jo.payonservices.transactions.dto.*;
 import com.jo.payonservices.transactions.model.Status;
@@ -54,6 +56,8 @@ public class TransactionService {
     private NotificationService notificationService;
     @Autowired
     private MerchantRepo merchantRepo;
+    @Autowired
+    private NotificationLogRepo notificationLogRepo;
 
     private static final String REDIS_TX_PREFIX = "tx:idempotency:";
     private static final String REDIS_ACK_PREFIX = "tx:ack:idempotency:";
@@ -71,7 +75,7 @@ public class TransactionService {
         if (Boolean.FALSE.equals(isAbsent)) {
             return transactionRepo.findByIdempotencyKey(request.getIdempotencyKey())
                     .map(tx -> TransactionResponse.builder()
-                            .transactionId(tx.getTransactionid())
+                            .transactionId(tx.getTransactionId())
                             .amount(tx.getAmount())
                             .idempotencyKey(tx.getIdempotencyKey())
                             .receiverUsername(null)
@@ -103,7 +107,6 @@ public class TransactionService {
                         .idempotencyKey(request.getIdempotencyKey())
                         .createdAt(LocalDateTime.now())
                         .build();
-
                 transactionRepo.save(transaction);
                 stringRedisTemplate.opsForValue().set(key, "SUCCESS", Duration.ofHours(24));
                 if (TransactionSynchronizationManager.isActualTransactionActive()) {
@@ -114,16 +117,15 @@ public class TransactionService {
                                     user.getUserName(),
                                     "Success",
                                     "Successful Deposit",
-                                    "You have successfully deposited EGP:" + request.getAmount() + "."
-                            );
-                        }
+                                    "You have successfully Deposit EGP:" + request.getAmount() + "."
+                            );                        }
                     });
                 } else {
-                    notificationService.sendNotification(user.getUserName(), "Success", "Successful Deposit", "You have successfully deposited EGP:" + request.getAmount() + ".");
+                    notificationService.sendNotification(user.getUserName(), "Success", "Successful Deposit", "You have successfully Deposit EGP:" + request.getAmount() + ".");
                 }
 
                 return TransactionResponse.builder()
-                        .transactionId(transaction.getTransactionid())
+                        .transactionId(transaction.getTransactionId())
                         .amount(transaction.getAmount())
                         .idempotencyKey(transaction.getIdempotencyKey())
                         .receiverUsername(null)
@@ -178,7 +180,7 @@ public class TransactionService {
         if (Boolean.FALSE.equals(isAbsent)) {
             return transactionRepo.findByIdempotencyKey(request.getIdempotencyKey())
                     .map(tx -> TransactionResponse.builder()
-                            .transactionId(tx.getTransactionid())
+                            .transactionId(tx.getTransactionId())
                             .amount(tx.getAmount())
                             .idempotencyKey(tx.getIdempotencyKey())
                             .receiverUsername(null)
@@ -234,7 +236,7 @@ public class TransactionService {
                 }
 
                 return TransactionResponse.builder()
-                        .transactionId(transaction.getTransactionid())
+                        .transactionId(transaction.getTransactionId())
                         .amount(transaction.getAmount())
                         .idempotencyKey(transaction.getIdempotencyKey())
                         .receiverUsername(null)
@@ -293,7 +295,7 @@ public class TransactionService {
         if (Boolean.FALSE.equals(isAbsent)) {
             return transactionRepo.findByIdempotencyKey(request.getIdempotencyKey())
                     .map(tx -> TransactionResponse.builder()
-                            .transactionId(tx.getTransactionid())
+                            .transactionId(tx.getTransactionId())
                             .amount(tx.getAmount())
                             .idempotencyKey(tx.getIdempotencyKey())
                             .receiverUsername(request.getReceiverUsername())
@@ -337,7 +339,7 @@ public class TransactionService {
                 transactionRepo.save(transaction);
                 stringRedisTemplate.opsForValue().set(key, "PENDING", Duration.ofHours(24));
                 return TransactionResponse.builder()
-                        .transactionId(transaction.getTransactionid())
+                        .transactionId(transaction.getTransactionId())
                         .amount(transaction.getAmount())
                         .idempotencyKey(transaction.getIdempotencyKey())
                         .receiverUsername(request.getReceiverUsername())
@@ -381,7 +383,7 @@ public class TransactionService {
             String targetUser = transaction.getReceiverWalletId().getUser().getUserName();
             return transactionRepo.findByIdempotencyKey(idempotencyKey)
                     .map(tx -> TransactionResponse.builder()
-                            .transactionId(tx.getTransactionid())
+                            .transactionId(tx.getTransactionId())
                             .amount(tx.getAmount())
                             .idempotencyKey(tx.getIdempotencyKey())
                             .receiverUsername(targetUser)
@@ -417,38 +419,58 @@ public class TransactionService {
 
                 stringRedisTemplate.opsForValue().set(txKey, transaction.getStatus().name(), Duration.ofHours(24));
                 stringRedisTemplate.opsForValue().set(ackKey, "SUCCESS", Duration.ofHours(24));
+                NotificationLog sendorNotificationLog = NotificationLog
+                        .builder()
+                        .username(senderWallet.getUser().getUserName())
+                        .title("Successful Transfer")
+                        .eventType("Success")
+                        .message("You have successfully Transferred EGP:" + transaction.getAmount() + " to " + receiverWallet.getUser().getUserName() +".")
+                        .isRead(false)
+                        .timestamp(LocalDateTime.now())
+                        .build();
+                NotificationLog receiverNotificationLog = NotificationLog
+                        .builder()
+                        .username(receiverWallet.getUser().getUserName())
+                        .title("Successful Transfer")
+                        .eventType("Success")
+                        .message("You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + senderWallet.getUser().getUserName() +".")
+                        .isRead(false)
+                        .timestamp(LocalDateTime.now())
+                        .build();
+                notificationLogRepo.save(sendorNotificationLog);
+                notificationLogRepo.save(receiverNotificationLog);
                 if (TransactionSynchronizationManager.isActualTransactionActive()) {
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
                             notificationService.sendNotification(
                                     senderWallet.getUser().getUserName(),
-                                    "Success",
-                                    "Successful Transfer",
-                                    "You have successfully Transferred EGP:" + transaction.getAmount() + " to " + receiverWallet.getUser().getUserName() +"."
+                                    sendorNotificationLog.getEventType(),
+                                    sendorNotificationLog.getTitle(),
+                                    sendorNotificationLog.getMessage()
                             );
                             if (receiverWallet.getUser().getStatus().equals(UserStatus.ONLINE)){
                             notificationService.sendNotification(
                                     receiverWallet.getUser().getUserName(),
-                                    "Success",
-                                    "Successful Transfer",
-                                    "You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + senderWallet.getUser().getUserName() +"."
+                                    receiverNotificationLog.getEventType(),
+                                    receiverNotificationLog.getTitle(),
+                                    receiverNotificationLog.getMessage()
                             );
                             }else {
-                                notificationService.notifyUserDevice(receiverWallet.getUser().getUserId(), String.valueOf(transaction.getTransactionid()));
+                                notificationService.notifyUserDevice(receiverWallet.getUser().getUserId(), String.valueOf(transaction.getTransactionId()),receiverNotificationLog.getId());
                             }
                         }
                     });
                 } else {
-                    notificationService.sendNotification(senderWallet.getUser().getUserName(), "Success", "Successful Transfer", "You have successfully Transferred EGP:" + transaction.getAmount() + " to " + receiverWallet.getUser().getUserName() +".");
+                    notificationService.sendNotification(senderWallet.getUser().getUserName(), sendorNotificationLog.getEventType(), sendorNotificationLog.getTitle(), sendorNotificationLog.getMessage());
                     if (receiverWallet.getUser().getStatus().equals(UserStatus.ONLINE)) {
-                        notificationService.sendNotification(receiverWallet.getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + senderWallet.getUser().getUserName() + ".");
+                        notificationService.sendNotification(receiverWallet.getUser().getUserName(), receiverNotificationLog.getEventType(), receiverNotificationLog.getTitle(), receiverNotificationLog.getMessage());
                     }else {
-                        notificationService.notifyUserDevice(receiverWallet.getUser().getUserId(), String.valueOf(transaction.getTransactionid()));
+                        notificationService.notifyUserDevice(receiverWallet.getUser().getUserId(), String.valueOf(transaction.getTransactionId()),receiverNotificationLog.getId());
                     }
                 }
                 return TransactionResponse.builder()
-                        .transactionId(transaction.getTransactionid())
+                        .transactionId(transaction.getTransactionId())
                         .amount(transaction.getAmount())
                         .idempotencyKey(transaction.getIdempotencyKey())
                         .receiverUsername(receiverWallet.getUser().getUserName())
@@ -486,7 +508,7 @@ public class TransactionService {
             if ("SUCCESS".equals(currentStatus)) {
                 return transactionRepo.findByIdempotencyKey(request.getIdempotencyKey())
                         .map(tx -> EnterpriseTransactionResponse.builder()
-                                .transactionId(tx.getTransactionid())
+                                .transactionId(tx.getTransactionId())
                                 .amount(tx.getAmount())
                                 .idempotencyKey(tx.getIdempotencyKey())
                                 .receiverAccountNumber(request.getReceiverAccountNumber())
@@ -524,7 +546,17 @@ public class TransactionService {
                     .createdAt(LocalDateTime.now())
                     .merchantType(MerchantType.ENTERPRISE)
                     .build();
+            NotificationLog receiverNotificationLog = NotificationLog
+                    .builder()
+                    .username(walletHolder[1].getUser().getUserName())
+                    .title("Successful Transfer")
+                    .eventType("Success")
+                    .message("You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() +".")
+                    .isRead(false)
+                    .timestamp(LocalDateTime.now())
+                    .build();
             transactionRepo.save(transaction);
+            notificationLogRepo.save(receiverNotificationLog);
             stringRedisTemplate.opsForValue().set(key, "SUCCESS", Duration.ofHours(24));
             if (TransactionSynchronizationManager.isActualTransactionActive()) {
                 TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -533,25 +565,25 @@ public class TransactionService {
                         if (walletHolder[1].getUser().getStatus().equals(UserStatus.ONLINE)){
                         notificationService.sendNotification(
                                 walletHolder[1].getUser().getUserName(),
-                                "Success",
-                                "Successful Transfer",
-                                "You have successfully been Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() +"."
+                                receiverNotificationLog.getEventType(),
+                                receiverNotificationLog.getTitle(),
+                                receiverNotificationLog.getMessage()
                         );
                         }else {
-                            notificationService.notifyUserDevice(walletHolder[1].getUser().getUserId(),transaction.getTransactionid().toString());
+                            notificationService.notifyUserDevice(walletHolder[1].getUser().getUserId(),transaction.getTransactionId().toString(), receiverNotificationLog.getId());
                         }
                     }
                 });
             } else {
                 if (walletHolder[1].getUser().getStatus().equals(UserStatus.ONLINE)) {
-                    notificationService.sendNotification(walletHolder[1].getUser().getUserName(), "Success", "Successful Transfer", "You have been successfully Transferred EGP:" + transaction.getAmount() + " from " + walletHolder[0].getUser().getUserName() + ".");
+                    notificationService.sendNotification(walletHolder[1].getUser().getUserName(), receiverNotificationLog.getEventType(), receiverNotificationLog.getTitle(), receiverNotificationLog.getMessage());
                 }else {
-                    notificationService.notifyUserDevice(walletHolder[1].getUser().getUserId(),transaction.getTransactionid().toString());
+                    notificationService.notifyUserDevice(walletHolder[1].getUser().getUserId(),transaction.getTransactionId().toString(), receiverNotificationLog.getId());
                 }
             }
             return EnterpriseTransactionResponse
                     .builder()
-                    .transactionId(transaction.getTransactionid())
+                    .transactionId(transaction.getTransactionId())
                     .type(transaction.getTransactionType().name())
                     .timestamp(transaction.getCreatedAt() != null ? transaction.getCreatedAt() : LocalDateTime.now())
                     .status(transaction.getStatus().name())
@@ -586,7 +618,29 @@ public class TransactionService {
         throw e;
         }
     }
-
+    @Transactional
+    public TransactionResponse getTransaction(String transactionId, Authentication auth) {
+        String username = auth.getName();
+        users user = userRepo.findByUserName(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
+        UUID id = UUID.fromString(transactionId);
+        Transaction transaction = transactionRepo.findByTransactionIdAndReceiverWalletId(id,wallet)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found"));
+        TransactionResponse response = TransactionResponse
+                .builder()
+                .transactionId(transaction.getTransactionId())
+                .type(transaction.getTransactionType().name())
+                .timestamp(transaction.getCreatedAt() != null ? transaction.getCreatedAt() : LocalDateTime.now())
+                .status(transaction.getStatus().name())
+                .receiverUsername(user.getUserName())
+                .amount(transaction.getAmount())
+                .idempotencyKey(transaction.getIdempotencyKey())
+                .build();
+        return response;
+    }
+    @Transactional
     public TransactionApiResponse<List<TransactionResponse>> getTransactions(Authentication authentication) {
         String username = authentication.getName();
         users user = userRepo.findByUserName(username)
@@ -602,7 +656,7 @@ public class TransactionService {
                     ? tx.getReceiverWalletId().getUser().getUserName() : null;
 
             return TransactionResponse.builder()
-                    .transactionId(tx.getTransactionid())
+                    .transactionId(tx.getTransactionId())
                     .amount(tx.getAmount())
                     .idempotencyKey(tx.getIdempotencyKey())
                     .receiverUsername(receiverName)
@@ -614,6 +668,7 @@ public class TransactionService {
 
         return new TransactionApiResponse<>("ALL Transactions Retrieved", transactionResponses);
     }
+    @Transactional
     public List<TransactionResponse> getEnterpriseTransactions(Authentication auth) {
         String userName = auth.getName();
         users user = userRepo.findByUserName(userName)
@@ -632,7 +687,7 @@ public class TransactionService {
                     ? tx.getReceiverWalletId().getUser().getUserName() : null;
 
             return TransactionResponse.builder()
-                    .transactionId(tx.getTransactionid())
+                    .transactionId(tx.getTransactionId())
                     .amount(tx.getAmount())
                     .idempotencyKey(tx.getIdempotencyKey())
                     .receiverUsername(receiverName)

@@ -31,15 +31,15 @@ public class SecurityConfig {
         return http
                 .securityMatcher(request -> {
                     String path = request.getRequestURI();
-                    return path.startsWith("/api/v1/enterprise/") && !path.startsWith("/api/v1/enterprise/merchant/form");
+                    return path.startsWith("/api/v2/enterprise/") && !path.startsWith("/api/v2/enterprise/merchant/form");
                 })                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/enterprise/merchant/rotate",
-                                "/api/v1/enterprise/merchant/transfer",
-                                "/api/v1/enterprise/merchant/transactions",
-                                "/api/v1/enterprise/merchant/receipts/create",
-                                "/api/v1/enterprise/merchant/receipts")
+                        .requestMatchers("/api/v2/enterprise/merchant/rotate",
+                                "/api/v2/enterprise/merchant/transfer",
+                                "/api/v2/enterprise/merchant/transactions",
+                                "/api/v2/enterprise/merchant/receipts/create",
+                                "/api/v2/enterprise/merchant/receipts")
                         .hasRole("ENTERPRISE_MERCHANT_ACTIVE")
                         .anyRequest().authenticated()
                 )
@@ -85,38 +85,39 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
-                                "/api/v1/auth/register",
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/logout",
-                                "/api/v1/enterprise/merchant/form",
-                                "/api/v1/enterprise/merchant/form/**",
-                                "/api/v1/auth/refresh",
-                                "/api/v1/wallet/syncContacts",
-                                "/api/v1/transactions/transfer/ack",
-                                "/api/v1/onPay/receipts/webhook",
-                                "/api/v1/onPay/receipts/{transactionCode}",
-                                "/api/v1/onPay/verify/**",
+                                "/api/v2/auth/register",
+                                "/api/v2/auth/login",
+                                "/api/v2/auth/logout",
+                                "/api/v2/enterprise/merchant/form",
+                                "/api/v2/enterprise/merchant/form/**",
+                                "/api/v2/auth/refresh",
+                                "/api/v2/wallet/syncContacts",
+                                "/api/v2/transactions/transfer/ack",
+                                "/api/v2/onPay/receipts/webhook",
+                                "/api/v2/onPay/receipts/{transactionCode}",
+                                "/api/v2/onPay/verify/**",
                                 "/ws/notifications/**",
                                 "/error",
                                 "/storage/thumbnails/**",
                                 "/WEB-INF/jsp/**"
                         ).permitAll()
                         .requestMatchers(
-                                "/api/v1/auth/upload-thumbnail",
-                                "/api/v1/auth/update",
-                                "/api/v1/auth/change/**",
-                                "/api/v1/auth/me",
-                                "/api/v1/wallet/initial",
-                                "/api/v1/wallet/walletInfo",
-                                "/api/v1/transactions/deposit",
-                                "/api/v1/transactions/withdraw",
-                                "/api/v1/transactions/transfer",
-                                "/api/v1/transactions/getTransactions",
-                                "/api/v1/merchant/becomeMerchant",
-                                "/api/v1/merchant/getMerchant",
-                                "/api/v1/onPay/receipts/{transactionCode}/pay",
-                                "/api/v1/onPay/receipts",
-                                "/api/v1/notifications/**"
+                                "/api/v2/auth/upload-thumbnail",
+                                "/api/v2/auth/update",
+                                "/api/v2/auth/change/**",
+                                "/api/v2/auth/me",
+                                "/api/v2/wallet/initial",
+                                "/api/v2/wallet/walletInfo",
+                                "/api/v2/transactions/deposit",
+                                "/api/v2/transactions/withdraw",
+                                "/api/v2/transactions/transfer",
+                                "/api/v2/transactions/getTransactions",
+                                "/api/v2/merchant/becomeMerchant",
+                                "/api/v2/merchant/getMerchant",
+                                "/api/v2/onPay/receipts/{transactionCode}/pay",
+                                "/api/v2/onPay/receipts",
+                                "/api/v2/onPay/merchant/receipts",
+                                "/api/v2/notifications/**"
                         ).authenticated()
 
                         .anyRequest().authenticated()

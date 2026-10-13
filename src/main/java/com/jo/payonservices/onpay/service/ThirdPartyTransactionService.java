@@ -6,6 +6,8 @@ import com.jo.payonservices.auth.repository.UserRepo;
 import com.jo.payonservices.merchant.model.Merchant;
 import com.jo.payonservices.merchant.model.MerchantType;
 import com.jo.payonservices.merchant.repository.MerchantRepo;
+import com.jo.payonservices.notifications.model.NotificationLog;
+import com.jo.payonservices.notifications.repository.NotificationLogRepo;
 import com.jo.payonservices.notifications.service.NotificationService;
 import com.jo.payonservices.onpay.dto.ReceiptResponse;
 import com.jo.payonservices.onpay.dto.ThirdPartyTransactionApiResponse;
@@ -24,7 +26,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -55,6 +56,7 @@ public class ThirdPartyTransactionService {
     private final ApplicationEventPublisher eventPublisher;
     private final NotificationService notificationService;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationLogRepo notificationLogRepo;
 
     private static final String REDIS_TX_PREFIX = "thptx:idempotency:";
 
@@ -67,14 +69,12 @@ public class ThirdPartyTransactionService {
     }
     @Transactional
     public ThirdPartyTransactionResponse newReceipt(Authentication auth,ThirdPartyTransactionRequest request) {
-        log.info("Processing new receipt webhook for merchant account: {}", request.getData().getAccountNumber());
         String userName = auth.getName();
         users user = userRepo.findByUserName(userName)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        Merchant merchant = merchantRepo.findByAccountNumber(request.getData().getAccountNumber())
+        Merchant merchant = merchantRepo.findByUser_UserName(user.getUserName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
-
-        Wallet wallet = walletRepo.findByAccountNumber(request.getData().getAccountNumber())
+        Wallet wallet = walletRepo.findByAccountNumber(merchant.getAccountNumber())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant Wallet not found"));
         if (!user.getEmail().equals(merchant.getUser().getEmail())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not belong to Merchant");
@@ -144,7 +144,7 @@ public class ThirdPartyTransactionService {
         String userName = auth.getName();
         users user = userRepo.findByUserName(userName)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "User not found"));
-        Wallet wallet = walletRepo.findByAccountNumber(request.getData().getAccountNumber())
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant Wallet not found"));
         Merchant merchant = merchantRepo.findByAccountNumber(wallet.getAccountNumber())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
@@ -234,14 +234,40 @@ public class ThirdPartyTransactionService {
         if (payerWallet.getBalance().compareTo(receipt.getAmount()) < 0) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "Insufficient balance");
         }
-            payerWallet.setBalance(payerWallet.getBalance().subtract(receipt.getAmount()));
-            merchantWallet.setBalance(merchantWallet.getBalance().add(receipt.getAmount()));
+        BigDecimal realAmount = receipt.getAmount();
+        if (receipt.getCurrency().equals("USD")){
+            realAmount = realAmount.multiply(BigDecimal.valueOf(53));
+        }else if (receipt.getCurrency().equals("EUR")){
+            realAmount = realAmount.multiply(BigDecimal.valueOf(67));
+        }
+            payerWallet.setBalance(payerWallet.getBalance().subtract(realAmount));
+            merchantWallet.setBalance(merchantWallet.getBalance().add(realAmount));
             walletRepo.save(merchantWallet);
             walletRepo.save(payerWallet);
             receipt.setPayerAccountNumber(payerWallet.getAccountNumber());
             receipt.setStatus(ThirdPartyStatus.SUCCESS);
             receipt.setUpdatedAt(LocalDateTime.now());
             onpayrepo.save(receipt);
+        NotificationLog sendorNotificationLog = NotificationLog
+                .builder()
+                .username(payerWallet.getUser().getUserName())
+                .title("Successful Payment")
+                .eventType("Success")
+                .message("You have successfully Pay EGP:" + receipt.getAmount() + " to " +receipt.getMerchantUserName() +"for receipt "+ receipt.getTransactionCode()+".")
+                .isRead(false)
+                .timestamp(LocalDateTime.now())
+                .build();
+        NotificationLog receiverNotificationLog = NotificationLog
+                .builder()
+                .username(merchantWallet.getUser().getUserName())
+                .title("Successful Payment")
+                .eventType("Success")
+                .message(payerWallet.getUser().getUserName() + " has successfully Pay the receipt " + receipt.getTransactionCode() + " ,for amount EGP:" + receipt.getAmount() + " .")
+                .isRead(false)
+                .timestamp(LocalDateTime.now())
+                .build();
+        notificationLogRepo.save(sendorNotificationLog);
+        notificationLogRepo.save(receiverNotificationLog);
         if (merchant.getMerchantType().equals(MerchantType.INDIVIDUAL)){
             if (TransactionSynchronizationManager.isActualTransactionActive()) {
                 TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -249,28 +275,28 @@ public class ThirdPartyTransactionService {
                     public void afterCommit() {
                         notificationService.sendNotification(
                                 payerWallet.getUser().getUserName(),
-                                "Success",
-                                "Successful Payment",
-                                "You have successfully Pay EGP:" + receipt.getAmount() + " to " +receipt.getMerchantUserName() +"for receipt "+ receipt.getTransactionCode()+"."
+                                sendorNotificationLog.getEventType(),
+                                sendorNotificationLog.getTitle(),
+                                sendorNotificationLog.getMessage()
                         );
                         if (merchantWallet.getUser().getStatus().equals(UserStatus.ONLINE)) {
                             notificationService.sendNotification(
                                     merchantWallet.getUser().getUserName(),
-                                    "Success",
-                                    "Successful Payment",
-                                    payerWallet.getUser().getUserName() + " has successfully Pay the receipt " + receipt.getTransactionCode() + " ,for amount EGP:" + receipt.getAmount() + " ."
+                                    receiverNotificationLog.getEventType(),
+                                    receiverNotificationLog.getTitle(),
+                                    receiverNotificationLog.getMessage()
                             );
                         }else {
-                            notificationService.notifyMerchantDevice(merchantWallet.getUser().getUserId(),receipt.getTransactionCode());
+                            notificationService.notifyMerchantDevice(merchantWallet.getUser().getUserId(), String.valueOf(receipt.getThirdPartyTransactionId()),receiverNotificationLog.getId());
                         }
                     }
                 });
             } else {
-                notificationService.sendNotification(payerWallet.getUser().getUserName(), "Success", "Successful Payment", "You have successfully Pay EGP:" + receipt.getAmount() + " to " + receipt.getMerchantUserName() + "for receipt " + receipt.getTransactionCode() + ".");
+                notificationService.sendNotification(payerWallet.getUser().getUserName(), sendorNotificationLog.getEventType(), sendorNotificationLog.getTitle(), sendorNotificationLog.getMessage());
                 if (merchantWallet.getUser().getStatus().equals(UserStatus.ONLINE)) {
-                    notificationService.sendNotification(merchantWallet.getUser().getUserName(), "Success", "Successful Payment", payerWallet.getUser().getUserName() + " has successfully Pay the receipt " + receipt.getTransactionCode() + " ,for amount EGP:" + receipt.getAmount() + " .");
-                }else {
-                    notificationService.notifyMerchantDevice(merchantWallet.getUser().getUserId(),receipt.getTransactionCode());
+                    notificationService.sendNotification(merchantWallet.getUser().getUserName(), receiverNotificationLog.getEventType(), receiverNotificationLog.getTitle(), receiverNotificationLog.getMessage());
+                } else {
+                    notificationService.notifyMerchantDevice(merchantWallet.getUser().getUserId(), String.valueOf(receipt.getThirdPartyTransactionId()),receiverNotificationLog.getId());
                 }
             }
         }else {
@@ -291,16 +317,47 @@ public class ThirdPartyTransactionService {
                     public void afterCommit() {
                         notificationService.sendNotification(
                                 payerWallet.getUser().getUserName(),
-                                "Success",
-                                "Successful Payment",
-                                "You have successfully Pay EGP:" + receipt.getAmount() + " to " +receipt.getMerchantUserName() +"for receipt "+ receipt.getTransactionCode()+"."
+                                sendorNotificationLog.getEventType(),
+                                sendorNotificationLog.getTitle(),
+                                sendorNotificationLog.getMessage()
                         );
                     }
                 });
             } else {
-                notificationService.sendNotification(payerWallet.getUser().getUserName(), "Success", "Successful Payment", "You have successfully Pay EGP:" + receipt.getAmount() + " to " +receipt.getMerchantUserName() +"for receipt "+ receipt.getTransactionCode()+".");
+                notificationService.sendNotification(payerWallet.getUser().getUserName(), sendorNotificationLog.getEventType(), sendorNotificationLog.getTitle(), sendorNotificationLog.getMessage());
             }
         }
+    }
+    @Transactional
+    public ThirdPartyTransactionResponse getCreatedReceipt(Authentication auth,String transactionId) {
+        String userName = auth.getName();
+        users user = userRepo.findByUserName(userName).orElseThrow(()->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName()).orElseThrow(()->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
+        UUID id = UUID.fromString(transactionId);
+        OnPay fullReceipt = onpayrepo.findByThirdPartyTransactionIdAndAccountNumber(id, wallet.getAccountNumber())
+                .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND, "Third party transaction not found"));
+        ThirdPartyTransactionResponse.TransactionDataResponse dataResponse = ThirdPartyTransactionResponse.TransactionDataResponse
+                .builder()
+                .transactionId(fullReceipt.getThirdPartyTransactionId())
+                .clientName(fullReceipt.getClientName())
+                .merchantUserName(fullReceipt.getMerchantUserName())
+                .merchantType(fullReceipt.getMerchantType())
+                .amount(fullReceipt.getAmount())
+                .currency(fullReceipt.getCurrency())
+                .accountNumber(fullReceipt.getAccountNumber())
+                .payerAccountNumber(fullReceipt.getPayerAccountNumber())
+                .transactionCode(fullReceipt.getTransactionCode())
+                .idempotencyKey(fullReceipt.getIdempotencyKey())
+                .createdAt(fullReceipt.getCreatedAt())
+                .updatedAt(fullReceipt.getUpdatedAt())
+                .build();
+        return ThirdPartyTransactionResponse
+                .builder()
+                .event(fullReceipt.getStatus())
+                .data(dataResponse)
+                .build();
     }
     @Transactional
     public ThirdPartyTransactionApiResponse<List<ReceiptResponse>> getReceipts(Authentication auth) {
@@ -324,7 +381,8 @@ public class ThirdPartyTransactionService {
 
         ).collect(Collectors.toList());
         return new ThirdPartyTransactionApiResponse<>("All Receipts Retrieved",responses);
-    }    @Transactional
+    }
+    @Transactional
     public List<ThirdPartyTransactionResponse> getEnterpriseReceipts(Authentication auth) {
         String userName = auth.getName();
         users user = userRepo.findByUserName(userName).orElseThrow(()->
@@ -348,6 +406,43 @@ public class ThirdPartyTransactionService {
                                     .updatedAt(re.getUpdatedAt())
                                     .createdAt(re.getCreatedAt())
                                     .transactionCode(re.getTransactionCode())
+                                    .build();
+                    return ThirdPartyTransactionResponse
+                            .builder()
+                            .event(re.getStatus())
+                            .data(data)
+                            .build();
+                }
+
+        ).collect(Collectors.toList());
+        return responses;
+    }
+    @Transactional
+    public List<ThirdPartyTransactionResponse> getMerchantReceipts(Authentication auth) {
+        String userName = auth.getName();
+        users user = userRepo.findByUserName(userName).orElseThrow(()->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Wallet wallet = walletRepo.findByUser_UserName(user.getUserName()).orElseThrow(()->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
+        Merchant merchant = merchantRepo.findByAccountNumber(wallet.getAccountNumber())
+                .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
+        List<OnPay> receipts = onpayrepo.findAllUserTransactionsByAccountNumberAndMerchantType(merchant.getAccountNumber(),merchant.getMerchantType());
+        List<ThirdPartyTransactionResponse> responses = receipts.stream().map(re->
+                {
+                    ThirdPartyTransactionResponse.TransactionDataResponse data =
+                            ThirdPartyTransactionResponse.TransactionDataResponse.builder()
+                                    .transactionId(re.getThirdPartyTransactionId())
+                                    .clientName(re.getClientName())
+                                    .merchantType(re.getMerchantType())
+                                    .accountNumber(re.getAccountNumber())
+                                    .amount(re.getAmount())
+                                    .payerAccountNumber(re.getPayerAccountNumber())
+                                    .merchantUserName(re.getMerchantUserName())
+                                    .currency(re.getCurrency())
+                                    .updatedAt(re.getUpdatedAt())
+                                    .createdAt(re.getCreatedAt())
+                                    .transactionCode(re.getTransactionCode())
+                                    .idempotencyKey(re.getIdempotencyKey())
                                     .build();
                     return ThirdPartyTransactionResponse
                             .builder()

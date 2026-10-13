@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/api/v2/auth")
 
 public class AuthController {
 
@@ -54,21 +54,16 @@ private AuthService authService;
     }
 
     @PostMapping("/upload-thumbnail")
-    public ResponseEntity<Map<String, Object>> uploadThumbnail(
+    public ResponseEntity<AuthApiResponse<ThumbnailResponse>> uploadThumbnail(
             @RequestPart("file") MultipartFile file,
             Authentication authentication) {
 
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User is not authenticated");
         }
+        ThumbnailResponse response = authService.uploadThumbnailFile(file, authentication);
 
-
-        String filePath = authService.uploadThumbnailFile(file, authentication);
-
-        return ResponseEntity.ok(Map.of(
-                "message", "Thumbnail uploaded successfully",
-                "data", Map.of("thumbnail_path", filePath)
-        ));
+        return ResponseEntity.ok().body(new AuthApiResponse<>("Thumbnail uploaded successfully", response));
     }
 
     @PostMapping("/logout")

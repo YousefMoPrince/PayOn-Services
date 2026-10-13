@@ -23,5 +23,7 @@ Optional<OnPay> findByReferenceKey(String referenceKey);
 @Query("SELECT o FROM OnPay o WHERE o.accountNumber = :accountNumber OR o.payerAccountNumber = :accountNumber")
 List<OnPay> findAllUserTransactions(@Param("accountNumber") Long accountNumber);
 List<OnPay> findAllUserTransactionsByAccountNumberAndMerchantType(Long accountNumber, MerchantType merchantType);
+Optional<List<OnPay>> findByMerchantUserName(String merchantUserName);
 Optional<OnPay> findByIdempotencyKey(UUID idempotencyKey);
+Optional<OnPay> findByThirdPartyTransactionIdAndAccountNumber(UUID thirdPartyTransactionId, Long accountNumber);
 }

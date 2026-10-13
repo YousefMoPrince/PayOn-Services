@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @Controller
-@RequestMapping("/api/v1/enterprise/merchant/form")
+@RequestMapping("/api/v2/enterprise/merchant/form")
 public class EnterpriseMerchantFormController {
     @Autowired
     private EnterpriseMerchantService enterpriseMerchantService;

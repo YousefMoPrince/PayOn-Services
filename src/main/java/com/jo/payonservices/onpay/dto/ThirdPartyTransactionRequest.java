@@ -14,7 +14,6 @@ public class ThirdPartyTransactionRequest {
     public static class TransactionDataRequest {
         private BigDecimal amount;
         private String clientName;
-        private Long accountNumber;
         private String currency;
         private UUID idempotencyKey;
     }

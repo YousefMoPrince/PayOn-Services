@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/transactions")
+@RequestMapping("/api/v2/transactions")
 public class TransactionController {
     @Autowired
     private TransactionService transactionService;
@@ -67,7 +67,10 @@ public class TransactionController {
         return ResponseEntity.ok(body);
     }
 
-
+    @GetMapping("/transaction")
+    public ResponseEntity<TransactionResponse> getTransaction(@RequestParam String transactionId, Authentication auth){
+        return new ResponseEntity<>(transactionService.getTransaction(transactionId, auth), HttpStatus.OK);
+    }
     @GetMapping("/getTransactions")
     public ResponseEntity<TransactionApiResponse<List<TransactionResponse>>> getTransactions(Authentication auth) {
         TransactionApiResponse<List<TransactionResponse>> response = transactionService.getTransactions(auth);

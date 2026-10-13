@@ -1,5 +1,6 @@
 package com.jo.payonservices.notifications.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,7 @@ public class NotificationResponse {
     private String eventType;
     private String title;
     private String message;
+    @JsonProperty("isRead")
     private boolean isRead;
     private LocalDateTime timestamp;
 }

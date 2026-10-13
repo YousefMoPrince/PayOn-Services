@@ -14,7 +14,7 @@ public class RefreshTokenService {
     }
 
     public void saveRefreshToken(String token, String username) {
-        redisTemplate.opsForValue().set(token, username, Duration.ofDays(7));
+        redisTemplate.opsForValue().set(token, username, Duration.ofDays(30));
     }
 
     public String getUsernameFromToken(String token) {

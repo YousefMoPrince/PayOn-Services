@@ -13,4 +13,5 @@ public interface NotificationLogRepo extends MongoRepository<NotificationLog, St
     Page<NotificationLog> findByUsernameOrderByTimestampDesc(String username, Pageable pageable);
     Optional<Long> countByUsernameAndIsReadFalse(String username);
     Optional<List<NotificationLog>> findByUsernameAndIsReadFalse(String username);
+    Optional<NotificationLog> findByUsernameAndIdAndIsReadFalse(String username, String id);
 }

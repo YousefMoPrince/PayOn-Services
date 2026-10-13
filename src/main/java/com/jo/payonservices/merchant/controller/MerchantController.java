@@ -11,7 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/merchant")
+@RequestMapping("/api/v2/merchant")
 public class MerchantController {
     @Autowired
     private MerchantService merchantService;

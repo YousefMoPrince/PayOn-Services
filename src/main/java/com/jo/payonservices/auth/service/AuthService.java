@@ -39,10 +39,13 @@ public class AuthService {
 
     public AuthResponse register(RegisterRequest request) {
         if (userRepo.existsByUserName(request.getUsername())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username is already taken");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username is already taken");
         }
         if (userRepo.existsByEmail(request.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is already registered");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already registered");
+        }
+        if (request.getPhonenumber().length() != 11){
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Phone number length must be 11 digits");
         }
         Role userRole = Role.INDIVIDUAL;
         LocalDateTime currentTime = LocalDateTime.now();
@@ -51,7 +54,7 @@ public class AuthService {
         user.setUserName(request.getUsername().trim());
         user.setFullName(request.getFullname().trim());
         user.setEmail(request.getEmail().trim());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setPassword(passwordEncoder.encode(request.getPassword().trim()));
         user.setCreatedAt(currentTime);
         user.setUpdatedAt(null);
         user.setPhoneNumber(request.getPhonenumber());
@@ -117,7 +120,7 @@ public class AuthService {
         userRepo.save(user);
     }
 
-    public String uploadThumbnailFile(MultipartFile file,Authentication auth) {
+    public ThumbnailResponse uploadThumbnailFile(MultipartFile file,Authentication auth) {
         if (file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File cannot be empty");
         }
@@ -144,8 +147,12 @@ public class AuthService {
             user.setThumbnailPath(filePath.toString().replace("\\", "/"));
             user.setUpdatedAt(LocalDateTime.now());
             userRepo.save(user);
-
-            return user.getThumbnailPath();
+            ThumbnailResponse response = ThumbnailResponse
+                    .builder()
+                    .thumbnailName(fileName)
+                    .thumbnailPath(filePath.toString().replace("\\", "/"))
+                    .build();
+            return response;
 
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store file", e);

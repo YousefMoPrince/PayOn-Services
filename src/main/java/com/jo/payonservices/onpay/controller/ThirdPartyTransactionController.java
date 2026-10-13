@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/onPay")
+@RequestMapping("/api/v2/onPay")
 @RequiredArgsConstructor
 public class ThirdPartyTransactionController {
 
@@ -51,11 +51,19 @@ public class ThirdPartyTransactionController {
         return ResponseEntity.ok(
                 new ThirdPartyTransactionApiResponse<>("Payment processed successfully", "SUCCESS"));
     }
-
+    @GetMapping("/receipt")
+    public ResponseEntity<ThirdPartyTransactionResponse> getCreatedReceipt(Authentication auth, @RequestParam String transactionId) {
+        return new ResponseEntity<>(thirdPartyTransactionService.getCreatedReceipt(auth, transactionId),HttpStatus.OK);
+    }
     @GetMapping("/receipts")
     public ResponseEntity<ThirdPartyTransactionApiResponse<List<ReceiptResponse>>> getAllReceipts(
             Authentication auth) {
         ThirdPartyTransactionApiResponse<List<ReceiptResponse>> response = thirdPartyTransactionService.getReceipts(auth);
         return ResponseEntity.ok(response);
+    }
+    @GetMapping("/merchant/receipts")
+    public ResponseEntity<ThirdPartyTransactionApiResponse<List<ThirdPartyTransactionResponse>>> getMerchantReceipts(Authentication auth) {
+        List<ThirdPartyTransactionResponse> responses = thirdPartyTransactionService.getMerchantReceipts(auth);
+        return ResponseEntity.ok(new ThirdPartyTransactionApiResponse<>("All merchant receipts fetched",responses));
     }
 }

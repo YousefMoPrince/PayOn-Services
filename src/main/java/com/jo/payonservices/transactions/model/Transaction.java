@@ -23,7 +23,7 @@ public class Transaction {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "transaction_id", nullable = false, updatable = false)
-    private UUID transactionid;
+    private UUID transactionId;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "wallet_id",nullable = false)
     private Wallet walletId;

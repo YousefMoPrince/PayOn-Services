@@ -8,6 +8,8 @@ import com.jo.payonservices.notifications.model.NotificationLog;
 import com.jo.payonservices.notifications.model.UserDeviceToken;
 import com.jo.payonservices.notifications.repository.NotificationLogRepo;
 import com.jo.payonservices.notifications.repository.UserDeviceTokenRepository;
+import com.jo.payonservices.transactions.model.Transaction;
+import com.jo.payonservices.transactions.model.TransactionType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,7 +39,7 @@ public class NotificationService {
     private final FcmPushService fcmPushService;
 
     @Transactional
-    public void registerDeviceToken(DeviceTokenRequest request, Authentication auth) {
+    public String registerDeviceToken(DeviceTokenRequest request, Authentication auth) {
         tokenRepository.deleteByDeviceToken(request.getDeviceToken());
         String username = (String) auth.getPrincipal();
         users user = userRepo.findByUserName(username)
@@ -50,6 +52,7 @@ public class NotificationService {
                 .build();
 
         tokenRepository.save(newToken);
+        return request.getDeviceToken();
     }
 
     @Transactional
@@ -59,13 +62,13 @@ public class NotificationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         tokenRepository.deleteByUserIdAndDeviceToken(user.getUserId(), deviceToken);
     }
-    public void notifyUserDevice(UUID userId, String transactionId) {
+    public void notifyUserDevice(UUID userId, String transactionId, String notificationId) {
         UserDeviceToken userDevices = tokenRepository.findByUserId(userId);
-            fcmPushService.sendTransactionSilentSyncPush(userDevices.getDeviceToken(), transactionId);
+            fcmPushService.sendTransactionSilentSyncPush(userDevices.getDeviceToken(), transactionId, notificationId);
     }
-    public void notifyMerchantDevice(UUID userId, Long transactionCode) {
+    public void notifyMerchantDevice(UUID userId, String transactionId, String notificationId) {
         UserDeviceToken userDevices = tokenRepository.findByUserId(userId);
-        fcmPushService.sendReceiptSilentSyncPush(userDevices.getDeviceToken(),transactionCode);
+        fcmPushService.sendReceiptSilentSyncPush(userDevices.getDeviceToken(),transactionId, notificationId);
     }
     public void sendNotification(String username, String eventType, String title, String message) {
         NotificationResponse notificationResponse = NotificationResponse
@@ -82,9 +85,24 @@ public class NotificationService {
                 notificationResponse
         );
         log.info("Attempting to send WS notification to user: {} for event: {}", username, eventType);
-        notificationLogService.saveToMongo(username, eventType, title, message);
-
     }
+
+    public NotificationResponse getNotification(Authentication auth, String id) {
+        String username = (String) auth.getPrincipal();
+        NotificationLog log = notificationLogRepo.findByUsernameAndIdAndIsReadFalse(username,id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found"));
+        NotificationResponse response = NotificationResponse
+                .builder()
+                .title(log.getTitle())
+                .message(log.getMessage())
+                .isRead(log.isRead())
+                .timestamp(log.getTimestamp())
+                .id(log.getId())
+                .eventType(log.getEventType())
+                .build();
+        return response;
+    }
+
     public Page<NotificationResponse> getRecentNotifications(Authentication auth, int page, int size) {
         String username = (String) auth.getPrincipal();
         Pageable pageable = PageRequest.of(page, size);

@@ -17,13 +17,10 @@ import java.util.UUID;
 public class UserDeviceToken {
     @Id
     private String id;
-
     @Indexed
     private UUID userId;
-
     @Indexed(unique = true)
     private String deviceToken;
-
     private String deviceType;
     private LocalDateTime updatedAt;
 }
